@@ -1,0 +1,18 @@
+# Copy this to docker-compose.override.yml for local development overrides
+# docker-compose.override.yml is gitignored
+
+version: "3.8"
+
+services:
+  # Mount source code for hot reloading during development
+  collector:
+    volumes:
+      - ./collector:/app/collector
+      - ./config.py:/app/config.py
+      - ./main.py:/app/main.py
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+
+  processor:
+    volumes:
+      - ./processor:/app/processor
+    command: ["uvicorn", "processor.main:app", "--host", "0.0.0.0", "--port", "8081", "--reload"]
