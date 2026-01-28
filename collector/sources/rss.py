@@ -17,7 +17,7 @@ class RSSSource(SourceAdapter):
                    {"Reuters World": "https://feeds.reuters.com/..."}
         """
         self.feeds = feeds
-        self.client = httpx.Client(timeout=30.0)
+        self.client = httpx.Client(timeout=30.0, follow_redirects=True)
 
     @property
     def source_type(self) -> str:

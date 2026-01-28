@@ -20,10 +20,12 @@ class Settings(BaseSettings):
     # RSS
     rss_enabled: bool = True
     rss_feeds: dict[str, str] = {
-        "Reuters World": "https://feeds.reuters.com/reuters/worldNews",
-        "BBC News": "http://feeds.bbci.co.uk/news/rss.xml",
+        "BBC News": "https://feeds.bbci.co.uk/news/rss.xml",
+        "BBC Tech": "https://feeds.bbci.co.uk/news/technology/rss.xml",
+        "NPR News": "https://feeds.npr.org/1001/rss.xml",
     }
 
     class Config:
         env_file = ".env"
         env_nested_delimiter = "__"
+        extra = "ignore"
