@@ -144,8 +144,8 @@ export const api = {
   },
 
   collect: (request: CollectRequest) =>
-    postJson<CollectResponse>('http://localhost:8080/collect', request),
+    postJson<CollectResponse>('/collect', request),
 
   process: () =>
-    postJson<ProcessResponse>('http://localhost:8081/process', {}),
+    postJson<ProcessResponse>('/process', {}),
 };
