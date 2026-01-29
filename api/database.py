@@ -322,3 +322,55 @@ class APIDatabase:
                 """, params)
 
                 return [dict(r) for r in cur.fetchall()]
+
+    def full_text_search(
+        self,
+        query: str,
+        search_phrase: str | None = None,
+        page: int = 1,
+        page_size: int = 20
+    ) -> tuple[list[dict], int]:
+        """Full-text search across titles and content."""
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                # Build the search query - handle multi-word searches
+                search_terms = query.strip().split()
+                tsquery = " & ".join(search_terms)
+
+                conditions = [
+                    "(to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, '') || ' ' || COALESCE(summary, '')) @@ to_tsquery('english', %s))"
+                ]
+                params = [tsquery]
+
+                if search_phrase:
+                    conditions.append("search_phrase = %s")
+                    params.append(search_phrase)
+
+                where_clause = "WHERE " + " AND ".join(conditions)
+
+                # Get total count
+                cur.execute(
+                    f"SELECT COUNT(*) FROM processed_items {where_clause}",
+                    params
+                )
+                total = cur.fetchone()["count"]
+
+                # Get paginated items with relevance ranking
+                offset = (page - 1) * page_size
+                cur.execute(f"""
+                    SELECT
+                        id, source_type, source_name, url, title,
+                        published_at, sentiment, sentiment_score, summary,
+                        search_phrase,
+                        ts_rank(
+                            to_tsvector('english', COALESCE(title, '') || ' ' || COALESCE(content, '') || ' ' || COALESCE(summary, '')),
+                            to_tsquery('english', %s)
+                        ) as relevance
+                    FROM processed_items
+                    {where_clause}
+                    ORDER BY relevance DESC, published_at DESC
+                    LIMIT %s OFFSET %s
+                """, [tsquery] + params + [page_size, offset])
+
+                items = [dict(r) for r in cur.fetchall()]
+                return items, total

@@ -9,6 +9,7 @@ import { ItemsTable } from './components/ItemsTable';
 import { StatsCards } from './components/StatsCards';
 import { CollectForm } from './components/CollectForm';
 import { SearchSelector } from './components/SearchSelector';
+import { SearchBar } from './components/SearchBar';
 import { RefreshCw } from 'lucide-react';
 
 function App() {
@@ -21,6 +22,11 @@ function App() {
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [granularity, setGranularity] = useState<'hour' | 'day' | 'week' | 'month'>('day');
+
+  // Full-text search state
+  const [searchQuery, setSearchQuery] = useState<string | null>(null);
+  const [searchResults, setSearchResults] = useState<ItemsResponse | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -46,8 +52,51 @@ function App() {
   }, [selectedPhrase, page, granularity]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!searchQuery) {
+      fetchData();
+    }
+  }, [fetchData, searchQuery]);
+
+  const handleSearch = async (query: string) => {
+    setIsSearching(true);
+    setSearchQuery(query);
+    try {
+      const results = await api.fullTextSearch({
+        q: query,
+        search_phrase: selectedPhrase || undefined,
+        page: 1,
+        page_size: 20
+      });
+      setSearchResults(results);
+    } catch (err) {
+      console.error('Search failed:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSearchPageChange = async (newPage: number) => {
+    if (!searchQuery) return;
+    setIsSearching(true);
+    try {
+      const results = await api.fullTextSearch({
+        q: searchQuery,
+        search_phrase: selectedPhrase || undefined,
+        page: newPage,
+        page_size: 20
+      });
+      setSearchResults(results);
+    } catch (err) {
+      console.error('Search failed:', err);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleClearSearch = () => {
+    setSearchQuery(null);
+    setSearchResults(null);
+  };
 
   const selectedSearch = selectedPhrase
     ? searches.find((s) => s.phrase === selectedPhrase) || null
@@ -97,64 +146,93 @@ function App() {
         {/* Collect Form */}
         <CollectForm onCollected={fetchData} />
 
-        {/* Search Selector */}
-        {searches.length > 0 && (
-          <SearchSelector
-            searches={searches}
-            selected={selectedPhrase}
-            onSelect={(phrase) => {
-              setSelectedPhrase(phrase);
-              setPage(1);
-            }}
-          />
-        )}
+        {/* Full-text Search */}
+        <SearchBar
+          onSearch={handleSearch}
+          onClear={handleClearSearch}
+          isSearching={isSearching}
+          currentQuery={searchQuery}
+        />
 
-        {/* Stats Cards */}
-        <StatsCards search={selectedSearch} />
+        {/* Search Results or Regular View */}
+        {searchQuery && searchResults ? (
+          <>
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+              <p className="text-purple-800">
+                Found <strong>{searchResults.total}</strong> articles matching "{searchQuery}"
+                {selectedPhrase && ` in "${selectedPhrase}" collection`}
+              </p>
+            </div>
+            <ItemsTable
+              items={searchResults.items}
+              total={searchResults.total}
+              page={searchResults.page}
+              pageSize={searchResults.page_size}
+              onPageChange={handleSearchPageChange}
+            />
+          </>
+        ) : (
+          <>
+            {/* Search Selector */}
+            {searches.length > 0 && (
+              <SearchSelector
+                searches={searches}
+                selected={selectedPhrase}
+                onSelect={(phrase) => {
+                  setSelectedPhrase(phrase);
+                  setPage(1);
+                }}
+              />
+            )}
 
-        {/* Sentiment Gauge */}
-        {selectedSearch && (
-          <SentimentGauge
-            score={selectedSearch.avg_sentiment_score}
-            label={`Overall Sentiment${selectedPhrase ? ` for "${selectedPhrase}"` : ''}`}
-          />
-        )}
+            {/* Stats Cards */}
+            <StatsCards search={selectedSearch} />
 
-        {/* Timeline Controls & Chart */}
-        <div className="space-y-2">
-          <div className="flex gap-2">
-            {(['hour', 'day', 'week', 'month'] as const).map((g) => (
-              <button
-                key={g}
-                onClick={() => setGranularity(g)}
-                className={`px-3 py-1 text-sm rounded-lg transition-colors ${
-                  granularity === g
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                {g.charAt(0).toUpperCase() + g.slice(1)}
-              </button>
-            ))}
-          </div>
-          <SentimentChart data={timeline} granularity={granularity} />
-        </div>
+            {/* Sentiment Gauge */}
+            {selectedSearch && (
+              <SentimentGauge
+                score={selectedSearch.avg_sentiment_score}
+                label={`Overall Sentiment${selectedPhrase ? ` for "${selectedPhrase}"` : ''}`}
+              />
+            )}
 
-        {/* Themes and Entities */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <ThemesList themes={themes} />
-          <EntitiesList entities={entities} />
-        </div>
+            {/* Timeline Controls & Chart */}
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                {(['hour', 'day', 'week', 'month'] as const).map((g) => (
+                  <button
+                    key={g}
+                    onClick={() => setGranularity(g)}
+                    className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                      granularity === g
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    {g.charAt(0).toUpperCase() + g.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <SentimentChart data={timeline} granularity={granularity} />
+            </div>
 
-        {/* Items Table */}
-        {items && (
-          <ItemsTable
-            items={items.items}
-            total={items.total}
-            page={items.page}
-            pageSize={items.page_size}
-            onPageChange={setPage}
-          />
+            {/* Themes and Entities */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <ThemesList themes={themes} />
+              <EntitiesList entities={entities} />
+            </div>
+
+            {/* Items Table */}
+            {items && (
+              <ItemsTable
+                items={items.items}
+                total={items.total}
+                page={items.page}
+                pageSize={items.page_size}
+                onPageChange={setPage}
+              />
+            )}
+          </>
         )}
       </main>
 

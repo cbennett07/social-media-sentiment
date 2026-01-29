@@ -203,6 +203,41 @@ def get_sources(
     return db.get_source_breakdown(search_phrase=search_phrase)
 
 
+@app.get("/search")
+def full_text_search(
+    q: str = Query(..., min_length=1, description="Search query"),
+    search_phrase: str | None = Query(None, description="Optionally limit to a specific collection"),
+    page: int = Query(1, ge=1, description="Page number"),
+    page_size: int = Query(None, ge=1, le=100, description="Items per page"),
+):
+    """
+    Full-text search across all collected articles.
+
+    Searches titles, content, and summaries. Results are ranked by relevance.
+    Optionally filter by search_phrase to limit to a specific collection.
+    """
+    db = get_db()
+    ps = min(page_size or settings.default_page_size, settings.max_page_size)
+
+    items, total = db.full_text_search(
+        query=q,
+        search_phrase=search_phrase,
+        page=page,
+        page_size=ps
+    )
+
+    total_pages = (total + ps - 1) // ps
+
+    return {
+        "query": q,
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": ps,
+        "total_pages": total_pages
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8082)

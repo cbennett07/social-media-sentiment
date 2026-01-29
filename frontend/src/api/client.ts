@@ -143,6 +143,19 @@ export const api = {
     return fetchJson<SourceBreakdown[]>(`${API_BASE}/sources${params}`);
   },
 
+  fullTextSearch: (params: {
+    q: string;
+    search_phrase?: string;
+    page?: number;
+    page_size?: number;
+  }) => {
+    const searchParams = new URLSearchParams({ q: params.q });
+    if (params.search_phrase) searchParams.set('search_phrase', params.search_phrase);
+    if (params.page) searchParams.set('page', params.page.toString());
+    if (params.page_size) searchParams.set('page_size', params.page_size.toString());
+    return fetchJson<ItemsResponse & { query: string }>(`${API_BASE}/search?${searchParams}`);
+  },
+
   collect: (request: CollectRequest) =>
     postJson<CollectResponse>('/collect', request),
 
