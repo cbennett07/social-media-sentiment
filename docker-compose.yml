@@ -148,6 +148,17 @@ services:
       retries: 3
       start_period: 10s
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+      - collector
+      - processor
+
   # Optional: Run processor as a continuous worker instead of API
   processor-worker:
     build:

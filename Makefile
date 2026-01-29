@@ -109,5 +109,17 @@ psql:
 redis-cli:
 	docker compose exec redis redis-cli
 
+# Frontend development
+frontend-dev:
+	cd frontend && npm run dev
+
+frontend-build:
+	cd frontend && npm run build
+
+logs-frontend:
+	docker compose logs -f frontend
+
+# URLs:
+# Frontend: http://localhost:3000 (or http://localhost:5173 for dev mode)
 # API docs: http://localhost:8082/docs
 # MinIO console: http://localhost:9001 (minioadmin/minioadmin)
