@@ -83,6 +83,9 @@ services:
       REDDIT_USER_AGENT: ${REDDIT_USER_AGENT:-SentimentCollector/1.0}
       REDDIT_ENABLED: ${REDDIT_ENABLED:-true}
       RSS_ENABLED: ${RSS_ENABLED:-true}
+      TWITTER_BEARER_TOKEN: ${TWITTER_BEARER_TOKEN:-}
+      TWITTER_ENABLED: ${TWITTER_ENABLED:-true}
+      TWITTER_MAX_RESULTS: ${TWITTER_MAX_RESULTS:-100}
     depends_on:
       redis:
         condition: service_healthy

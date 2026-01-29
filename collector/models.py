@@ -9,6 +9,7 @@ class SourceType(str, Enum):
     NEWS_API = "newsapi"
     REDDIT = "reddit"
     RSS = "rss"
+    TWITTER = "twitter"
 
 
 @dataclass

@@ -8,6 +8,7 @@ from collector.queue import RedisQueueClient
 from collector.sources.newsapi import NewsAPISource
 from collector.sources.reddit import RedditSource
 from collector.sources.rss import RSSSource
+from collector.sources.twitter import TwitterSource
 from collector.models import SearchRequest
 
 
@@ -31,6 +32,12 @@ def build_service() -> CollectorService:
 
     if settings.rss_enabled and settings.rss_feeds:
         sources.append(RSSSource(settings.rss_feeds))
+
+    if settings.twitter_enabled and settings.twitter_bearer_token:
+        sources.append(TwitterSource(
+            bearer_token=settings.twitter_bearer_token,
+            max_results=settings.twitter_max_results,
+        ))
 
     queue = RedisQueueClient(settings.redis_url)
 

@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     reddit_subreddits: list[str] = ["news", "worldnews", "technology"]
     reddit_enabled: bool = True
 
+    # Twitter/X
+    twitter_bearer_token: str | None = None
+    twitter_enabled: bool = True
+    twitter_max_results: int = 100
+
     # RSS
     rss_enabled: bool = True
     rss_feeds: dict[str, str] = {
