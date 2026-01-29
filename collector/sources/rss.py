@@ -1,6 +1,6 @@
 import httpx
 import feedparser
-from datetime import datetime
+from datetime import datetime, timezone
 from time import mktime
 from typing import Iterator
 from collector.models import CollectedItem, SearchRequest, SourceType
@@ -69,12 +69,13 @@ class RSSSource(SourceAdapter):
         self, entry: dict, feed_name: str, phrase: str
     ) -> CollectedItem:
         # Parse published date - feedparser normalizes to struct_time
+        # Use UTC timezone for consistent comparison with request dates
         if hasattr(entry, "published_parsed") and entry.published_parsed:
-            published = datetime.fromtimestamp(mktime(entry.published_parsed))
+            published = datetime.fromtimestamp(mktime(entry.published_parsed), tz=timezone.utc)
         elif hasattr(entry, "updated_parsed") and entry.updated_parsed:
-            published = datetime.fromtimestamp(mktime(entry.updated_parsed))
+            published = datetime.fromtimestamp(mktime(entry.updated_parsed), tz=timezone.utc)
         else:
-            published = datetime.now()
+            published = datetime.now(timezone.utc)
 
         return CollectedItem(
             source_type=self.source_type,
@@ -85,7 +86,7 @@ class RSSSource(SourceAdapter):
             content=entry.get("summary", ""),
             author=entry.get("author"),
             published_at=published,
-            collected_at=datetime.now(),
+            collected_at=datetime.now(timezone.utc),
             search_phrase=phrase,
             metadata={
                 "tags": [t.term for t in entry.get("tags", [])],
