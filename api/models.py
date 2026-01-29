@@ -58,6 +58,8 @@ class SearchSummary(BaseModel):
     total_items: int
     first_collected: datetime | None
     last_collected: datetime | None
+    first_published: datetime | None
+    last_published: datetime | None
     avg_sentiment_score: float
     sentiment_distribution: dict[str, int]
 

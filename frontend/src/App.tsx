@@ -104,8 +104,10 @@ function App() {
     ? {
         phrase: 'All',
         total_items: searches.reduce((sum, s) => sum + s.total_items, 0),
-        first_collected: searches[0]?.first_collected || '',
-        last_collected: searches[0]?.last_collected || '',
+        first_collected: searches.reduce((min, s) => s.first_collected < min ? s.first_collected : min, searches[0]?.first_collected || ''),
+        last_collected: searches.reduce((max, s) => s.last_collected > max ? s.last_collected : max, searches[0]?.last_collected || ''),
+        first_published: searches.reduce((min, s) => s.first_published < min ? s.first_published : min, searches[0]?.first_published || ''),
+        last_published: searches.reduce((max, s) => s.last_published > max ? s.last_published : max, searches[0]?.last_published || ''),
         avg_sentiment_score:
           searches.reduce((sum, s) => sum + s.avg_sentiment_score * s.total_items, 0) /
           searches.reduce((sum, s) => sum + s.total_items, 0) || 0,
@@ -199,7 +201,27 @@ function App() {
             {/* Timeline Controls & Chart */}
             <div className="space-y-2">
               <div className="flex gap-2">
-                {(['hour', 'day', 'week', 'month'] as const).map((g) => (
+                {(['hour', 'day', 'week', 'month'] as const)
+                  .filter((g) => {
+                    // Calculate date range from published dates to determine valid granularities
+                    if (searches.length === 0) return g === 'day';
+                    const dates = searches.flatMap(s => [
+                      new Date(s.first_published).getTime(),
+                      new Date(s.last_published).getTime()
+                    ]);
+                    const minDate = Math.min(...dates);
+                    const maxDate = Math.max(...dates);
+                    const rangeMs = maxDate - minDate;
+                    const rangeDays = rangeMs / (1000 * 60 * 60 * 24);
+
+                    // Only show granularities that would yield at least 2 data points
+                    if (g === 'hour') return rangeDays >= 0.1; // ~2.4 hours
+                    if (g === 'day') return rangeDays >= 1;
+                    if (g === 'week') return rangeDays >= 14;
+                    if (g === 'month') return rangeDays >= 60; // ~2 months
+                    return true;
+                  })
+                  .map((g) => (
                   <button
                     key={g}
                     onClick={() => setGranularity(g)}

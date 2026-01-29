@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from datetime import datetime, date
+from datetime import datetime, date, timedelta, timezone
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -37,6 +37,8 @@ class APIDatabase:
                         COUNT(*) as total_items,
                         MIN(collected_at) as first_collected,
                         MAX(collected_at) as last_collected,
+                        MIN(published_at) as first_published,
+                        MAX(published_at) as last_published,
                         AVG(sentiment_score) as avg_sentiment_score
                     FROM processed_items
                     GROUP BY search_phrase
@@ -207,16 +209,26 @@ class APIDatabase:
                 if search_phrase:
                     conditions.append("search_phrase = %s")
                     params.append(search_phrase)
-                if start_date:
-                    conditions.append("published_at >= %s")
-                    params.append(start_date)
+
+                # Apply default date ranges based on granularity if not specified
+                if not start_date:
+                    default_ranges = {
+                        "hour": timedelta(days=2),
+                        "day": timedelta(days=14),
+                        "week": timedelta(weeks=12),
+                        "month": timedelta(days=365),
+                    }
+                    range_delta = default_ranges.get(granularity, timedelta(days=14))
+                    start_date = datetime.now(timezone.utc) - range_delta
+
+                conditions.append("published_at >= %s")
+                params.append(start_date)
+
                 if end_date:
                     conditions.append("published_at <= %s")
                     params.append(end_date)
 
-                where_clause = ""
-                if conditions:
-                    where_clause = "WHERE " + " AND ".join(conditions)
+                where_clause = "WHERE " + " AND ".join(conditions)
 
                 # Determine date truncation based on granularity
                 trunc_map = {

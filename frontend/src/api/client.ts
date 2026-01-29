@@ -5,6 +5,8 @@ export interface Search {
   total_items: number;
   first_collected: string;
   last_collected: string;
+  first_published: string;
+  last_published: string;
   avg_sentiment_score: number;
   sentiment_distribution: {
     positive?: number;

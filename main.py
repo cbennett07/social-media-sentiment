@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -60,9 +60,9 @@ def collect(req: CollectRequest):
     """Trigger a collection run."""
     search = SearchRequest(
         phrase=req.phrase,
-        start_date=req.start_date or datetime.now() - timedelta(days=7),
-        end_date=req.end_date or datetime.now(),
-        job_id=req.job_id or f"manual-{datetime.now().timestamp()}",
+        start_date=req.start_date or datetime.now(timezone.utc) - timedelta(days=7),
+        end_date=req.end_date or datetime.now(timezone.utc),
+        job_id=req.job_id or f"manual-{datetime.now(timezone.utc).timestamp()}",
         sources=req.sources,
     )
 
