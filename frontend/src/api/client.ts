@@ -65,6 +65,8 @@ export interface SourceBreakdown {
 export interface CollectRequest {
   phrase: string;
   sources?: string[];
+  start_date?: string;
+  end_date?: string;
 }
 
 export interface CollectResponse {
