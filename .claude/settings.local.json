@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker compose:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(grep:*)",
+      "Bash(ls:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(gh auth:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(gh:*)",
+      "Bash(sudo apt-get update:*)",
+      "Bash(sudo apt-get install:*)",
+      "Bash(export PATH=\"$HOME/.local/bin:$PATH\")",
+      "Bash(tar:*)",
+      "Bash(./google-cloud-sdk/install.sh:*)",
+      "Bash(echo:*)",
+      "Bash(~/.bashrc)",
+      "Bash(export PATH=\"/tmp/google-cloud-sdk/bin:$PATH\")",
+      "Bash(gcloud auth login:*)",
+      "Bash(/tmp/google-cloud-sdk/bin/gcloud version:*)",
+      "Bash(/tmp/google-cloud-sdk/bin/gcloud auth login:*)",
+      "Bash(find:*)",
+      "Bash(gcloud services enable:*)",
+      "Bash(/tmp/google-cloud-sdk/bin/gcloud services enable:*)",
+      "Bash(gcloud:*)"
+    ]
+  }
+}
