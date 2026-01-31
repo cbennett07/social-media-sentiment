@@ -31,6 +31,11 @@ variable "api_image" {
   type        = string
 }
 
+variable "frontend_image" {
+  description = "Frontend service container image"
+  type        = string
+}
+
 # API Keys (sensitive)
 variable "newsapi_key" {
   description = "NewsAPI API key"

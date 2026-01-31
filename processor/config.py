@@ -13,9 +13,10 @@ class ProcessorSettings(BaseSettings):
     openai_api_key: str | None = None
     llm_model: str | None = None  # Uses provider default if not set
 
-    # Object Storage (S3-compatible)
+    # Object Storage
     storage_bucket: str = "sentiment-raw-content"
-    storage_endpoint_url: str | None = None  # For MinIO, GCS interop, etc.
+    storage_provider: str = "auto"  # "auto", "s3", or "gcs"
+    storage_endpoint_url: str | None = None  # For MinIO, custom S3
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
     aws_region: str = "us-east-1"

@@ -1,5 +1,5 @@
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import APISettings
@@ -20,6 +20,9 @@ app = FastAPI(
     description="API for querying social media and news sentiment analysis results",
     version="1.0.0"
 )
+
+# API router with /api prefix for load balancer routing
+api_router = APIRouter(prefix="/api")
 
 # CORS middleware
 app.add_middleware(
@@ -43,14 +46,23 @@ def get_db() -> APIDatabase:
 
 @app.get("/health")
 def health():
-    """Health check endpoint."""
+    """Health check endpoint (root level for Cloud Run)."""
     db = get_db()
     if not db.health_check():
         raise HTTPException(status_code=503, detail={"database": False})
     return {"database": True}
 
 
-@app.get("/searches", response_model=list[SearchSummary])
+@api_router.get("/health")
+def api_health():
+    """Health check endpoint (under /api for load balancer)."""
+    db = get_db()
+    if not db.health_check():
+        raise HTTPException(status_code=503, detail={"database": False})
+    return {"database": True}
+
+
+@api_router.get("/searches", response_model=list[SearchSummary])
 def list_searches():
     """
     List all search phrases with summary statistics.
@@ -62,7 +74,7 @@ def list_searches():
     return db.get_searches()
 
 
-@app.get("/items")
+@api_router.get("/items")
 def list_items(
     search_phrase: str | None = Query(None, description="Filter by search phrase"),
     source_type: str | None = Query(None, description="Filter by source type (newsapi, reddit, rss)"),
@@ -102,7 +114,7 @@ def list_items(
     }
 
 
-@app.get("/items/{item_id}", response_model=ItemResponse)
+@api_router.get("/items/{item_id}", response_model=ItemResponse)
 def get_item(item_id: str):
     """
     Get a single item with full analysis details.
@@ -118,7 +130,7 @@ def get_item(item_id: str):
     return item
 
 
-@app.get("/themes", response_model=list[ThemeAggregation])
+@api_router.get("/themes", response_model=list[ThemeAggregation])
 def get_themes(
     search_phrase: str | None = Query(None, description="Filter by search phrase"),
     start_date: datetime | None = Query(None, description="Filter by start date"),
@@ -140,7 +152,7 @@ def get_themes(
     )
 
 
-@app.get("/sentiment/timeline", response_model=list[SentimentOverTime])
+@api_router.get("/sentiment/timeline", response_model=list[SentimentOverTime])
 def get_sentiment_timeline(
     search_phrase: str | None = Query(None, description="Filter by search phrase"),
     start_date: datetime | None = Query(None, description="Filter by start date"),
@@ -168,7 +180,7 @@ def get_sentiment_timeline(
     )
 
 
-@app.get("/entities", response_model=list[EntityAggregation])
+@api_router.get("/entities", response_model=list[EntityAggregation])
 def get_entities(
     search_phrase: str | None = Query(None, description="Filter by search phrase"),
     start_date: datetime | None = Query(None, description="Filter by start date"),
@@ -190,7 +202,7 @@ def get_entities(
     )
 
 
-@app.get("/sources")
+@api_router.get("/sources")
 def get_sources(
     search_phrase: str | None = Query(None, description="Filter by search phrase"),
 ):
@@ -203,7 +215,7 @@ def get_sources(
     return db.get_source_breakdown(search_phrase=search_phrase)
 
 
-@app.get("/search")
+@api_router.get("/search")
 def full_text_search(
     q: str = Query(..., min_length=1, description="Search query"),
     search_phrase: str | None = Query(None, description="Optionally limit to a specific collection"),
@@ -236,6 +248,10 @@ def full_text_search(
         "page_size": ps,
         "total_pages": total_pages
     }
+
+
+# Include API router with /api prefix
+app.include_router(api_router)
 
 
 if __name__ == "__main__":

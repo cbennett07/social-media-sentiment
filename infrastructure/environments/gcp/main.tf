@@ -7,6 +7,8 @@ resource "google_project_service" "apis" {
     "secretmanager.googleapis.com",
     "vpcaccess.googleapis.com",
     "servicenetworking.googleapis.com",
+    "binaryauthorization.googleapis.com",
+    "compute.googleapis.com",
   ])
 
   service            = each.value
@@ -56,6 +58,7 @@ module "secrets" {
     openai-api-key       = var.openai_api_key
   }
 
+  region = var.region
   labels = local.labels
 
   depends_on = [google_project_service.apis]
@@ -132,9 +135,10 @@ module "storage" {
 module "collector" {
   source = "./modules/container-service"
 
-  name  = "${local.name_prefix}-collector"
-  image = var.collector_image
-  port  = 8080
+  name   = "${local.name_prefix}-collector"
+  image  = var.collector_image
+  port   = 8080
+  region = var.region
 
   environment = {
     REDIS_URL     = module.redis.connection_url
@@ -142,11 +146,12 @@ module "collector" {
     RSS_ENABLED   = "true"
   }
 
-  secrets = {
-    NEWSAPI_KEY          = module.secrets.secret_refs["newsapi-key"]
-    REDDIT_CLIENT_ID     = module.secrets.secret_refs["reddit-client-id"]
-    REDDIT_CLIENT_SECRET = module.secrets.secret_refs["reddit-client-secret"]
-  }
+  # Only include secrets that have values
+  secrets = merge(
+    var.newsapi_key != "" ? { NEWSAPI_KEY = module.secrets.secret_refs["newsapi-key"] } : {},
+    var.reddit_client_id != "" ? { REDDIT_CLIENT_ID = module.secrets.secret_refs["reddit-client-id"] } : {},
+    var.reddit_client_secret != "" ? { REDDIT_CLIENT_SECRET = module.secrets.secret_refs["reddit-client-secret"] } : {}
+  )
 
   cpu               = "1"
   memory            = "512Mi"
@@ -156,16 +161,17 @@ module "collector" {
   allow_unauthenticated = true
   labels            = local.labels
 
-  depends_on = [google_project_service.apis, module.redis]
+  depends_on = [google_project_service.apis, module.redis, module.secrets]
 }
 
 # Processor Service
 module "processor" {
   source = "./modules/container-service"
 
-  name  = "${local.name_prefix}-processor"
-  image = var.processor_image
-  port  = 8081
+  name   = "${local.name_prefix}-processor"
+  image  = var.processor_image
+  port   = 8081
+  region = var.region
 
   environment = {
     REDIS_URL            = module.redis.connection_url
@@ -176,33 +182,35 @@ module "processor" {
     AWS_REGION           = var.region
   }
 
-  secrets = {
-    ANTHROPIC_API_KEY = module.secrets.secret_refs["anthropic-api-key"]
-    OPENAI_API_KEY    = module.secrets.secret_refs["openai-api-key"]
-  }
+  # Only include secrets that have values
+  secrets = merge(
+    var.anthropic_api_key != "" ? { ANTHROPIC_API_KEY = module.secrets.secret_refs["anthropic-api-key"] } : {},
+    var.openai_api_key != "" ? { OPENAI_API_KEY = module.secrets.secret_refs["openai-api-key"] } : {}
+  )
 
   cpu               = "2"
   memory            = "1Gi"
   min_instances     = 0
   max_instances     = 10
   vpc_connector     = module.networking.vpc_connector
-  allow_unauthenticated = false
+  allow_unauthenticated = true
   labels            = local.labels
 
-  depends_on = [google_project_service.apis, module.redis, module.postgres, module.storage]
+  depends_on = [google_project_service.apis, module.redis, module.postgres, module.storage, module.secrets]
 }
 
 # API Service
 module "api" {
   source = "./modules/container-service"
 
-  name  = "${local.name_prefix}-api"
-  image = var.api_image
-  port  = 8082
+  name   = "${local.name_prefix}-api"
+  image  = var.api_image
+  port   = 8082
+  region = var.region
 
   environment = {
     DATABASE_URL = module.postgres.connection_string
-    CORS_ORIGINS = jsonencode(["https://${local.name_prefix}-api.run.app"])
+    CORS_ORIGINS = jsonencode(["*"])  # Allow all origins for load balancer
   }
 
   cpu               = "1"
@@ -214,4 +222,63 @@ module "api" {
   labels            = local.labels
 
   depends_on = [google_project_service.apis, module.postgres]
+}
+
+# Frontend Service
+module "frontend" {
+  source = "./modules/container-service"
+
+  name   = "${local.name_prefix}-frontend"
+  image  = var.frontend_image
+  port   = 80
+  region = var.region
+
+  # No API_URL needed - load balancer routes /api/* to API backend
+  environment = {}
+
+  cpu               = "1"
+  memory            = "512Mi"
+  min_instances     = 1
+  max_instances     = 5
+  vpc_connector     = module.networking.vpc_connector
+  allow_unauthenticated = true
+  labels            = local.labels
+
+  depends_on = [google_project_service.apis, module.api]
+}
+
+# ===================
+# LOAD BALANCER
+# ===================
+
+module "load_balancer" {
+  source = "./modules/load-balancer"
+
+  name    = local.name_prefix
+  region  = var.region
+  network = module.networking.vpc_id
+
+  services = {
+    frontend = {
+      cloud_run_name = module.frontend.name
+      path_prefix    = "/*"
+    }
+    api = {
+      cloud_run_name = module.api.name
+      path_prefix    = "/api/*"
+    }
+    collector = {
+      cloud_run_name = module.collector.name
+      path_prefix    = "/collect"
+    }
+    processor = {
+      cloud_run_name = module.processor.name
+      path_prefix    = "/process"
+    }
+  }
+
+  default_service = "frontend"
+  labels          = local.labels
+
+  depends_on = [google_project_service.apis, module.frontend, module.api, module.collector, module.processor]
 }

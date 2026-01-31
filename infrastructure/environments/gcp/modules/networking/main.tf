@@ -53,6 +53,16 @@ resource "google_service_networking_connection" "private_vpc_connection" {
   reserved_peering_ranges = [google_compute_global_address.private_ip_range.name]
 }
 
+# Proxy-only subnet for regional external Application Load Balancer
+resource "google_compute_subnetwork" "proxy_only" {
+  name          = "${var.name}-proxy-only"
+  ip_cidr_range = "10.129.0.0/23"
+  region        = var.region
+  network       = google_compute_network.vpc.id
+  purpose       = "REGIONAL_MANAGED_PROXY"
+  role          = "ACTIVE"
+}
+
 # Firewall rules
 resource "google_compute_firewall" "allow_internal" {
   name    = "${var.name}-allow-internal"

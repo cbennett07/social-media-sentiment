@@ -56,11 +56,21 @@ variable "labels" {
   default = {}
 }
 
+variable "region" {
+  type    = string
+  default = "europe-west1"
+}
+
 data "google_project" "current" {}
 
 resource "google_cloud_run_v2_service" "service" {
   name     = var.name
-  location = data.google_project.current.name
+  location = var.region
+  ingress  = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+
+  binary_authorization {
+    use_default = true
+  }
 
   template {
     scaling {

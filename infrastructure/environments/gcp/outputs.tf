@@ -13,6 +13,11 @@ output "api_url" {
   value       = module.api.url
 }
 
+output "frontend_url" {
+  description = "URL of the frontend service"
+  value       = module.frontend.url
+}
+
 output "database_connection" {
   description = "Database connection string"
   value       = module.postgres.connection_string
@@ -27,4 +32,14 @@ output "redis_host" {
 output "storage_bucket" {
   description = "Storage bucket name"
   value       = module.storage.bucket_name
+}
+
+output "load_balancer_ip" {
+  description = "External load balancer IP address"
+  value       = module.load_balancer.ip_address
+}
+
+output "public_url" {
+  description = "Public URL via load balancer"
+  value       = module.load_balancer.http_url
 }

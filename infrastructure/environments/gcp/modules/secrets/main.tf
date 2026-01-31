@@ -8,21 +8,48 @@ variable "labels" {
   default = {}
 }
 
+variable "region" {
+  type    = string
+  default = "europe-west1"
+}
+
+locals {
+  # Extract keys as non-sensitive for for_each iteration
+  secret_keys = nonsensitive(toset(keys(var.secrets)))
+  # Filter out empty secrets for version creation
+  non_empty_secrets = nonsensitive(toset([for k, v in var.secrets : k if v != ""]))
+}
+
 resource "google_secret_manager_secret" "secrets" {
-  for_each  = var.secrets
+  for_each  = local.secret_keys
   secret_id = each.key
 
   labels = var.labels
 
   replication {
-    auto {}
+    user_managed {
+      replicas {
+        location = var.region
+      }
+    }
   }
 }
 
 resource "google_secret_manager_secret_version" "versions" {
-  for_each    = var.secrets
+  for_each    = local.non_empty_secrets
   secret      = google_secret_manager_secret.secrets[each.key].id
-  secret_data = each.value
+  secret_data = var.secrets[each.key]
+}
+
+# Get project info for compute service account
+data "google_project" "current" {}
+
+# Allow Cloud Run (compute) service account to access secrets
+resource "google_secret_manager_secret_iam_member" "cloud_run_access" {
+  for_each  = local.non_empty_secrets
+  secret_id = google_secret_manager_secret.secrets[each.key].id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${data.google_project.current.number}-compute@developer.gserviceaccount.com"
 }
 
 output "secret_refs" {

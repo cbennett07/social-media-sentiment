@@ -8,6 +8,7 @@ from processor.queue import RedisQueueConsumer
 from processor.llm.anthropic import AnthropicLLMClient
 from processor.llm.openai import OpenAILLMClient
 from processor.storage.s3 import S3ObjectStorage
+from processor.storage.gcs import GCSObjectStorage
 from processor.database.postgres import PostgresDatabase
 
 logging.basicConfig(level=logging.INFO)
@@ -45,13 +46,21 @@ def build_service() -> ProcessorService:
 
     llm = build_llm_client()
 
-    storage = S3ObjectStorage(
-        bucket=settings.storage_bucket,
-        endpoint_url=settings.storage_endpoint_url,
-        aws_access_key_id=settings.aws_access_key_id,
-        aws_secret_access_key=settings.aws_secret_access_key,
-        region_name=settings.aws_region
-    )
+    # Choose storage backend
+    if settings.storage_provider == "gcs" or (
+        settings.storage_provider == "auto" and not settings.storage_endpoint_url
+    ):
+        # Use GCS (default for GCP when no endpoint specified)
+        storage = GCSObjectStorage(bucket=settings.storage_bucket)
+    else:
+        # Use S3-compatible storage (MinIO, AWS S3, etc.)
+        storage = S3ObjectStorage(
+            bucket=settings.storage_bucket,
+            endpoint_url=settings.storage_endpoint_url,
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+            region_name=settings.aws_region
+        )
 
     database = PostgresDatabase(settings.database_url)
 
@@ -102,7 +111,9 @@ def health():
     """Health check endpoint."""
     service = get_service()
     status = service.health()
-    healthy = all(status.values())
+    # Only require queue and database for startup health
+    # LLM and storage are checked but not required
+    healthy = status.get("queue", False) and status.get("database", False)
     if not healthy:
         raise HTTPException(status_code=503, detail=status)
     return status
