@@ -131,62 +131,196 @@ curl -X POST http://localhost:8081/process \
    - Added `first_published` and `last_published` fields to `/searches` response
    - These represent the actual article publication dates (vs collection dates)
 
+## Recent Changes (2026-01-31)
+
+### GCP Deployment Fixes
+
+1. **Regional Load Balancer** (`infrastructure/environments/gcp/modules/load-balancer/main.tf`)
+   - Global load balancers blocked by org constraint, switched to Regional External Application Load Balancer
+   - Added proxy-only subnet for EXTERNAL_MANAGED load balancing scheme
+   - Uses STANDARD network tier for external IP
+
+2. **Processor 403 Error Fix** (`infrastructure/environments/gcp/main.tf:196`)
+   - Changed `allow_unauthenticated = false` to `true` for processor service
+   - Load balancer needs unauthenticated access to route traffic
+
+3. **GCS Storage Support** (`processor/storage/gcs.py`)
+   - Added Google Cloud Storage backend for processor
+   - Previously only had S3/MinIO support which failed on GCP
+   - Auto-detects GCS when `STORAGE_ENDPOINT_URL` is not set
+   - Uses Application Default Credentials on Cloud Run
+
+4. **Docker Build Fix** (`.dockerignore`)
+   - Added `.dockerignore` to exclude `.env` file from container builds
+   - `.env` had `STORAGE_ENDPOINT_URL=http://localhost:9000` which broke GCP deployment
+
+5. **API Route Prefix** (`api/main.py`)
+   - Added `/api` prefix to all API routes using FastAPI router
+   - Required for load balancer URL map path matching (`/api/*` -> API backend)
+   - Health check remains at both `/health` (Cloud Run) and `/api/health` (load balancer)
+
+### Vertex AI Claude Integration
+
+Switched from direct Anthropic API to Vertex AI for LLM processing. All billing now goes through GCP.
+
+1. **Vertex AI Client** (`processor/llm/vertex.py`)
+   - Added `VertexAIClaudeClient` using `AnthropicVertex` from the anthropic SDK
+   - Uses Application Default Credentials (no API key needed on Cloud Run)
+   - Model: `claude-sonnet-4-5` in `us-east5` region
+
+2. **LLM Provider Configuration** (`processor/config.py`, `processor/main.py`)
+   - Added `llm_provider = "vertex"` option (alongside "anthropic" and "openai")
+   - Added `GCP_PROJECT_ID` and `GCP_REGION` environment variables
+   - Auto-selects Vertex AI when `LLM_PROVIDER=vertex`
+
+3. **Terraform Updates** (`infrastructure/environments/gcp/main.tf`)
+   - Enabled `aiplatform.googleapis.com` API
+   - Set `LLM_PROVIDER=vertex` for processor
+   - Set `GCP_REGION=us-east5` for Vertex AI (Claude not available in all regions)
+
+4. **Requirements** (`requirements-processor.txt`)
+   - Changed `anthropic>=0.18.0` to `anthropic[vertex]>=0.18.0` for Vertex AI support
+
+### Enabling Vertex AI Claude
+
+To use Claude on Vertex AI, you must:
+1. Go to Vertex AI Model Garden in GCP Console
+2. Find Claude model (e.g., `claude-sonnet-4-5`)
+3. Click "Enable" and accept Terms & Conditions
+4. Note: Model availability varies by region (us-east5 works for Claude Sonnet 4.5)
+
 ## Architecture Notes
 
 - **Collector** pushes raw articles to Redis queue
-- **Processor** pulls from queue, calls LLM API, stores results in PostgreSQL and MinIO
+- **Processor** pulls from queue, calls Vertex AI Claude for sentiment analysis, stores results in PostgreSQL and GCS
 - **API** serves processed data to frontend
 - **Frontend** displays sentiment charts, themes, entities, and article list
 
-## GCP Deployment (In Progress)
+### LLM Provider Options
 
-### Status
-GCP deployment was started but not completed. Next steps:
+The processor supports multiple LLM providers via `LLM_PROVIDER` environment variable:
 
-### To Deploy to GCP:
+| Provider | Value | Requirements | Billing |
+|----------|-------|--------------|---------|
+| Vertex AI Claude | `vertex` | GCP project with Vertex AI enabled | GCP billing |
+| Anthropic API | `anthropic` | `ANTHROPIC_API_KEY` | Anthropic billing |
+| OpenAI API | `openai` | `OPENAI_API_KEY` | OpenAI billing |
 
-1. **Create a GCP Project** (if not done):
-   - Go to https://console.cloud.google.com
-   - Create a new project named `social-media-sentiment`
+Current GCP deployment uses **Vertex AI** (`LLM_PROVIDER=vertex`) with Claude Sonnet 4.5.
 
-2. **Create a Service Account**:
-   - Go to https://console.cloud.google.com/iam-admin/serviceaccounts
-   - Create service account: `terraform-deployer`
-   - Grant "Owner" role
-   - Create JSON key and download it
+## GCP Deployment
 
-3. **Authenticate with gcloud**:
+### Current Deployment
+
+**Public URL: http://35.210.81.215**
+
+- Project ID: `social-media-sentiment-485915`
+- Region: `europe-west1`
+- Load Balancer: Regional External Application Load Balancer
+
+### Accessing the Deployed App
+
+The load balancer routes traffic as follows:
+- `/` - Frontend dashboard
+- `/api/*` - API service (searches, items, themes, sentiment, entities)
+- `/collect` - Collector service
+- `/process` - Processor service
+
+### Collect and Process Data on GCP
+
+```bash
+# Collect articles (RSS works without API keys)
+curl -X POST http://35.210.81.215/collect \
+  -H "Content-Type: application/json" \
+  -d '{"phrase": "AI", "sources": ["rss"]}'
+
+# Process collected articles (uses Vertex AI Claude - billed through GCP)
+curl -X POST http://35.210.81.215/process \
+  -H "Content-Type: application/json" \
+  -d '{"batch_size": 20}'
+
+# Check API health
+curl http://35.210.81.215/api/health
+
+# List searches
+curl http://35.210.81.215/api/searches
+```
+
+### Infrastructure Components (GCP)
+
+| Component | Service | Details |
+|-----------|---------|---------|
+| Frontend | Cloud Run | `sentiment-dev-frontend` |
+| API | Cloud Run | `sentiment-dev-api` |
+| Collector | Cloud Run | `sentiment-dev-collector` |
+| Processor | Cloud Run | `sentiment-dev-processor` |
+| Database | Cloud SQL | PostgreSQL 16, `sentiment-dev-db-*` |
+| Cache | Memorystore | Redis 7.0, `sentiment-dev-redis` |
+| Storage | Cloud Storage | `sentiment-dev-raw-*` |
+| LLM | Vertex AI | Claude Sonnet 4.5 (`us-east5`) |
+| Load Balancer | Regional External ALB | Routes to Cloud Run via serverless NEGs |
+
+### Redeploying Services
+
+```bash
+cd infrastructure/environments/gcp
+
+# Rebuild and push a service image (must use linux/amd64 for Cloud Run)
+docker buildx build --platform linux/amd64 -t eu.gcr.io/social-media-sentiment-485915/api:latest -f api/Dockerfile --push .
+
+# Force Cloud Run to pull new image
+gcloud run services update sentiment-dev-api \
+  --image=eu.gcr.io/social-media-sentiment-485915/api:latest \
+  --region=europe-west1 \
+  --project=social-media-sentiment-485915
+
+# Or redeploy all via Terraform
+terraform apply
+```
+
+### Notes on Load Balancer Setup
+
+- Global load balancers are blocked by org constraint (`constraints/compute.disableGlobalLoadBalancing`)
+- Using Regional External Application Load Balancer instead
+- Requires a proxy-only subnet (`sentiment-dev-proxy-only`) in the VPC
+- Uses STANDARD network tier for the external IP
+- API routes are prefixed with `/api` to work with URL map path matching
+
+### Fresh GCP Deployment
+
+If deploying to a new GCP project:
+
+1. **Create a GCP Project** and note the project ID
+
+2. **Authenticate with gcloud**:
    ```bash
-   # Install gcloud if needed
-   cd /tmp && curl -sO https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-cli-linux-x86_64.tar.gz
-   tar -xzf google-cloud-cli-linux-x86_64.tar.gz
-   export PATH="/tmp/google-cloud-sdk/bin:$PATH"
-
-   # Authenticate with service account
-   gcloud auth activate-service-account --key-file=/path/to/your-key.json
+   gcloud auth login
    gcloud config set project YOUR_PROJECT_ID
+   gcloud auth application-default login
    ```
 
-4. **Deploy with Terraform**:
+3. **Deploy with Terraform**:
    ```bash
-   cd /repos/social-media-sentiment/infrastructure/environments/gcp
+   cd infrastructure/environments/gcp
 
-   # Copy and edit variables
+   # Create terraform.tfvars with your settings
    cp terraform.tfvars.example terraform.tfvars
-   # Edit terraform.tfvars with your project ID and settings
+   # Edit terraform.tfvars
 
-   # Initialize and apply
    terraform init
    terraform plan
    terraform apply
    ```
 
-### Infrastructure Components (GCP)
-- Cloud Run for services (collector, processor, api, frontend)
-- Cloud SQL for PostgreSQL
-- Memorystore for Redis
-- Cloud Storage for object storage
-- Secret Manager for API keys
+4. **Build and push container images**:
+   ```bash
+   # Build for linux/amd64 (required for Cloud Run)
+   for svc in collector processor api frontend; do
+     docker buildx build --platform linux/amd64 \
+       -t eu.gcr.io/YOUR_PROJECT_ID/$svc:latest \
+       -f $svc/Dockerfile --push .
+   done
+   ```
 
 ## Stopping Services
 

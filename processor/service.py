@@ -118,10 +118,12 @@ class ProcessorService:
             )
 
     def health(self) -> dict:
-        """Check health of all components."""
+        """Check health of all components.
+
+        Note: LLM and storage checks are skipped for startup probes
+        as they can be slow or require external API calls.
+        """
         return {
             "queue": self.queue.health_check(),
-            "llm": self.llm.health_check(),
-            "storage": self.storage.health_check(),
             "database": self.database.health_check(),
         }

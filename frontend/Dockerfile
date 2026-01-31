@@ -12,9 +12,14 @@ RUN npm run build
 # Production stage
 FROM nginx:alpine
 
+# Install sed for URL replacement
+RUN apk add --no-cache sed
+
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+ENTRYPOINT ["/docker-entrypoint.sh"]

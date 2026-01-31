@@ -9,6 +9,7 @@ resource "google_project_service" "apis" {
     "servicenetworking.googleapis.com",
     "binaryauthorization.googleapis.com",
     "compute.googleapis.com",
+    "aiplatform.googleapis.com",
   ])
 
   service            = each.value
@@ -179,13 +180,15 @@ module "processor" {
     DATABASE_URL         = module.postgres.connection_string
     STORAGE_BUCKET       = module.storage.bucket_name
     LLM_PROVIDER         = var.llm_provider
+    GCP_PROJECT_ID       = var.project_id
+    GCP_REGION           = "us-east5"  # Vertex AI Claude region
     AWS_REGION           = var.region
   }
 
-  # Only include secrets that have values
+  # Only include secrets if using direct API providers (not Vertex AI)
   secrets = merge(
-    var.anthropic_api_key != "" ? { ANTHROPIC_API_KEY = module.secrets.secret_refs["anthropic-api-key"] } : {},
-    var.openai_api_key != "" ? { OPENAI_API_KEY = module.secrets.secret_refs["openai-api-key"] } : {}
+    var.llm_provider == "anthropic" && var.anthropic_api_key != "" ? { ANTHROPIC_API_KEY = module.secrets.secret_refs["anthropic-api-key"] } : {},
+    var.llm_provider == "openai" && var.openai_api_key != "" ? { OPENAI_API_KEY = module.secrets.secret_refs["openai-api-key"] } : {}
   )
 
   cpu               = "2"

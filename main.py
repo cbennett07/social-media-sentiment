@@ -74,7 +74,9 @@ def collect(req: CollectRequest):
 def health():
     """Health check endpoint."""
     status = service.health()
-    healthy = status["queue"] and all(status["sources"].values())
+    # Only require queue to be healthy for startup
+    # Individual sources may be unconfigured
+    healthy = status["queue"]
     if not healthy:
         raise HTTPException(status_code=503, detail=status)
     return status

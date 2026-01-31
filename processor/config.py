@@ -8,10 +8,14 @@ class ProcessorSettings(BaseSettings):
     use_redis_streams: bool = False
 
     # LLM
-    llm_provider: str = "anthropic"  # "anthropic" or "openai"
+    llm_provider: str = "anthropic"  # "anthropic", "vertex", or "openai"
     anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     llm_model: str | None = None  # Uses provider default if not set
+
+    # Vertex AI (for llm_provider="vertex")
+    gcp_project_id: str | None = None
+    gcp_region: str = "europe-west1"
 
     # Object Storage
     storage_bucket: str = "sentiment-raw-content"

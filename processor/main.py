@@ -7,6 +7,7 @@ from processor.service import ProcessorService
 from processor.queue import RedisQueueConsumer
 from processor.llm.anthropic import AnthropicLLMClient
 from processor.llm.openai import OpenAILLMClient
+from processor.llm.vertex import VertexAIClaudeClient
 from processor.storage.s3 import S3ObjectStorage
 from processor.storage.gcs import GCSObjectStorage
 from processor.database.postgres import PostgresDatabase
@@ -26,6 +27,14 @@ def build_llm_client():
         return AnthropicLLMClient(
             api_key=settings.anthropic_api_key,
             model=settings.llm_model or "claude-sonnet-4-20250514"
+        )
+    elif settings.llm_provider == "vertex":
+        if not settings.gcp_project_id:
+            raise ValueError("GCP_PROJECT_ID required for Vertex AI provider")
+        return VertexAIClaudeClient(
+            project_id=settings.gcp_project_id,
+            region=settings.gcp_region,
+            model=settings.llm_model or "claude-sonnet-4-5"
         )
     elif settings.llm_provider == "openai":
         if not settings.openai_api_key:

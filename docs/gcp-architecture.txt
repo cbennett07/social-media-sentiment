@@ -1,0 +1,142 @@
+GCP Architecture - Social Media Sentiment Analysis Platform
+============================================================
+
+Project: social-media-sentiment-485915
+Load Balancer IP: http://35.210.81.215
+
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                              GCP Project: social-media-sentiment-485915                      │
+│                                                                                              │
+│  ┌───────────────────────────────────────────────────────────────────────────────────────┐  │
+│  │                         Regional External Application Load Balancer                    │  │
+│  │                              http://35.210.81.215                                      │  │
+│  │  ┌─────────────────────────────────────────────────────────────────────────────────┐  │  │
+│  │  │                              URL Map (Path-based routing)                        │  │  │
+│  │  │   /*        → Frontend    │  /api/*    → API                                    │  │  │
+│  │  │   /collect  → Collector   │  /process  → Processor                              │  │  │
+│  │  └─────────────────────────────────────────────────────────────────────────────────┘  │  │
+│  └───────────────────────────────────────────────────────────────────────────────────────┘  │
+│                                              │                                               │
+│                    ┌─────────────────────────┼─────────────────────────┐                    │
+│                    │                         │                         │                    │
+│                    ▼                         ▼                         ▼                    │
+│  ┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐              │
+│  │   Cloud Run          │  │   Cloud Run          │  │   Cloud Run          │              │
+│  │   ┌────────────────┐ │  │   ┌────────────────┐ │  │   ┌────────────────┐ │              │
+│  │   │   Frontend     │ │  │   │   Collector    │ │  │   │   Processor    │ │              │
+│  │   │   (nginx)      │ │  │   │   (FastAPI)    │ │  │   │   (FastAPI)    │ │              │
+│  │   │   :80          │ │  │   │   :8080        │ │  │   │   :8081        │ │              │
+│  │   └────────────────┘ │  │   └───────┬────────┘ │  │   └───────┬────────┘ │              │
+│  └──────────────────────┘  └───────────┼──────────┘  └───────────┼──────────┘              │
+│                                        │                         │                          │
+│                    ┌───────────────────┼─────────────────────────┼───────┐                  │
+│                    │                   │                         │       │                  │
+│                    │                   ▼                         ▼       │                  │
+│                    │        ┌──────────────────┐      ┌──────────────────┐                  │
+│                    │        │   Memorystore    │      │   Vertex AI      │                  │
+│                    │        │   (Redis 7.0)    │◄─────│   Claude 4.5     │                  │
+│                    │        │                  │      │   (us-east5)     │                  │
+│                    │        │  Queue: raw_     │      └──────────────────┘                  │
+│                    │        │  content         │                                            │
+│                    │        └──────────────────┘                                            │
+│                    │                                                                        │
+│  ┌──────────────────────┐                                                                   │
+│  │   Cloud Run          │                                                                   │
+│  │   ┌────────────────┐ │         ┌──────────────────┐      ┌──────────────────┐           │
+│  │   │   API          │ │         │   Cloud SQL      │      │   Cloud Storage  │           │
+│  │   │   (FastAPI)    │─┼────────►│   PostgreSQL 16  │      │   (GCS Bucket)   │           │
+│  │   │   :8082        │ │         │                  │      │                  │           │
+│  │   └────────────────┘ │         │  DB: sentiment   │      │  Raw articles    │           │
+│  └──────────────────────┘         │  Tables:         │      │  & analysis      │           │
+│                                   │  - processed_    │      │  results         │           │
+│                                   │    items         │      └──────────────────┘           │
+│                                   │  - searches      │                 ▲                   │
+│                                   └──────────────────┘                 │                   │
+│                                                                        │                   │
+│                                   ┌──────────────────┐                 │                   │
+│                                   │  Secret Manager  │                 │                   │
+│                                   │                  │                 │                   │
+│                                   │  - newsapi-key   │     Processor stores raw content    │
+│                                   │  - reddit-*      │     and analysis JSON               │
+│                                   │  - anthropic-*   │                                     │
+│                                   │  - openai-*      │                                     │
+│                                   └──────────────────┘                                     │
+│                                                                                            │
+│  ┌────────────────────────────────────────────────────────────────────────────────────┐   │
+│  │                                    VPC Network                                      │   │
+│  │   ┌─────────────────────────┐    ┌─────────────────────────┐                       │   │
+│  │   │  Serverless VPC Access  │    │  Private Services       │                       │   │
+│  │   │  Connector              │    │  Connection             │                       │   │
+│  │   │  (Cloud Run → VPC)      │    │  (Cloud SQL, Redis)     │                       │   │
+│  │   └─────────────────────────┘    └─────────────────────────┘                       │   │
+│  └────────────────────────────────────────────────────────────────────────────────────┘   │
+│                                                                                            │
+└────────────────────────────────────────────────────────────────────────────────────────────┘
+
+
+Data Flow
+─────────
+
+    ┌──────────┐     1. Collect      ┌───────────┐     2. Queue      ┌─────────┐
+    │  User    │ ──────────────────► │ Collector │ ────────────────► │  Redis  │
+    │ (Browse) │     articles        │           │     raw_content   │         │
+    └──────────┘                     └───────────┘                   └────┬────┘
+                                                                          │
+    ┌──────────┐     5. Display      ┌───────────┐     4. Query      ┌────┴────┐
+    │ Frontend │ ◄────────────────── │    API    │ ◄──────────────── │Postgres │
+    │          │     results         │           │     analyzed      │         │
+    └──────────┘                     └───────────┘     data          └────┬────┘
+                                                                          │
+                                     ┌───────────┐     3. Analyze         │
+                                     │ Processor │ ◄──────────────────────┘
+                                     │           │  ┌───────────────┐
+                                     │           │──│ Vertex AI     │
+                                     │           │  │ Claude 4.5    │
+                                     └───────────┘  └───────────────┘
+                                           │
+                                           ▼
+                                     ┌───────────┐
+                                     │   GCS     │
+                                     │  Bucket   │
+                                     └───────────┘
+
+
+Component Summary
+─────────────────
+
+| Component      | Service                    | Purpose                                    |
+|----------------|----------------------------|--------------------------------------------|
+| Frontend       | Cloud Run (nginx)          | React dashboard, static assets             |
+| Collector      | Cloud Run (FastAPI)        | Fetches articles from RSS, NewsAPI, Reddit |
+| Processor      | Cloud Run (FastAPI)        | Analyzes content via Vertex AI Claude      |
+| API            | Cloud Run (FastAPI)        | Serves analyzed data to frontend           |
+| Load Balancer  | Regional External ALB      | Routes traffic by path prefix              |
+| PostgreSQL     | Cloud SQL                  | Stores processed items and search history  |
+| Redis          | Memorystore                | Message queue between collector/processor  |
+| GCS            | Cloud Storage              | Raw article content and analysis JSON      |
+| Vertex AI      | Claude Sonnet 4.5          | Sentiment analysis (us-east5 region)       |
+| Secret Manager | Secrets                    | API keys for external services             |
+
+
+URL Routing
+───────────
+
+| Path       | Backend Service | Description                     |
+|------------|----------------|---------------------------------|
+| /*         | Frontend       | React SPA (default)             |
+| /api/*     | API            | REST API endpoints              |
+| /collect   | Collector      | Trigger article collection      |
+| /process   | Processor      | Trigger sentiment processing    |
+
+
+Technology Stack
+────────────────
+
+- Frontend: React + TypeScript + Vite + Tailwind CSS
+- Backend: Python + FastAPI
+- Database: PostgreSQL 16
+- Cache/Queue: Redis 7.0
+- Storage: Google Cloud Storage
+- LLM: Vertex AI Claude Sonnet 4.5
+- Infrastructure: Terraform
+- Container Runtime: Cloud Run (serverless)
